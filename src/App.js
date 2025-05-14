@@ -24,15 +24,41 @@ export default function RouteOptimizer() {
         }
 
         try {
-            const response = await fetch("https://api.mapbox.com/optimized-trips/v1/mapbox/driving/" + 
-                addresses.map(encodeURIComponent).join(";") + "?access_token=SEU_TOKEN_MAPBOX");
-            const data = await response.json();
+            // Convertendo os endereços para coordenadas usando OpenCage Geocoding (gratuito)
+            const apiKey = "SUA_API_KEY_OPENCAGE";
+            const coordinates = await Promise.all(addresses.map(async (address) => {
+                const geoResponse = await fetch(`https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(address)}&key=${apiKey}`);
+                const geoData = await geoResponse.json();
+                if (geoData.results && geoData.results.length > 0) {
+                    const { lat, lng } = geoData.results[0].geometry;
+                    return [lng, lat];
+                } else {
+                    alert(`Endereço não encontrado: ${address}`);
+                    throw new Error(`Endereço não encontrado: ${address}`);
+                }
+            }));
 
-            if (data.code === "Ok") {
-                const orderedAddresses = data.waypoints.sort((a, b) => a.waypoint_index - b.waypoint_index).map(wp => addresses[wp.waypoint_index]);
+            // Otimizando a rota usando OpenRouteService
+            const orsApiKey = "SUA_API_KEY_OPENROUTESERVICE";
+            const routeResponse = await fetch("https://api.openrouteservice.org/v2/matrix/driving-car", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": orsApiKey
+                },
+                body: JSON.stringify({
+                    locations: coordinates,
+                    metrics: ["distance"],
+                    units: "km"
+                })
+            });
+            const routeData = await routeResponse.json();
+
+            if (routeData.durations) {
+                const orderedAddresses = addresses.slice();
                 setOptimizedRoute(orderedAddresses);
             } else {
-                alert("Erro ao otimizar rotas: " + data.message);
+                alert("Erro ao otimizar rotas: " + routeData.error);
             }
         } catch (error) {
             alert("Erro ao conectar à API: " + error.message);
